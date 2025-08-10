@@ -1,0 +1,650 @@
+---
+title: "Predictive Analysis of Diabetes Risk Using BRFSS 2015 Health Indicators"
+author: "Inam Ullah"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Introduction and Project Goal
+
+The goal of this project is to build a predictive model for diabetes using the **BRFSS2015 dataset**, a key public health resource.
+In a medical and public health context, the ability to accurately predict diabetes risk is crucial for early intervention and patient care. My objective is to not only predict a patient's risk but also to identify the most significant health indicators that contribute to that risk. This project follows a complete data science workflow, from data cleaning and exploration to building and evaluating several machine learning models to find the most effective one.
+
+### 📌 Project Overview
+
+As a data analyst, I undertook this project to explore, clean, and model the **`diabetes_binary_5050split_health_indicators_BRFSS2015`** dataset, sourced from **Kaggle**.  
+The dataset contains **70,692 observations** and **22 variables** derived from the CDC’s Behavioral Risk Factor Surveillance System (BRFSS) 2015 survey, including clinical, demographic, and lifestyle factors.  
+
+The main objective of this project is to **analyze patterns and key predictors of diabetes** using a structured data science workflow:  
+
+1. **Data Loading & Inspection** – Understanding the dataset’s structure and quality.  
+2. **Data Cleaning & Preprocessing** – Handling missing values, duplicates, and type conversions.  
+3. **Exploratory Data Analysis (EDA)** – Visualizing distributions and identifying relationships with diabetes.  
+4. **Feature Engineering** – Creating meaningful variables to improve predictive power.  
+5. **Model Building & Evaluation** – Implementing logistic regression to classify diabetes cases and evaluating performance using accuracy, ROC-AUC, and confusion matrices.  
+
+This project demonstrates my ability to perform **end-to-end data analysis**, from raw data handling to actionable insights, following best practices in statistical modeling and visualization.  
+
+---
+
+# Step 1: Loading and Inspecting the Dataset
+## 1.1: Load Required Libraries
+
+As a data analyst, I load these libraries to streamline data manipulation, visualization, and input/output tasks. **tidyverse** includes a suite of packages (like **dplyr** and **ggplot2**) essential for modern data science workflows.
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)   # For data manipulation
+library(readr)       # For reading data
+library(dplyr)       # For cleaner syntax
+library(ggplot2)     # For visualization
+library("corrplot")
+```
+
+
+## 1.2: Load the Dataset
+
+I import the dataset using **read_csv()** because it handles structured data efficiently and returns a tibble, making downstream analysis easier. I assume the dataset contains clinical and lifestyle indicators for diabetes prediction.
+“The dataset contains 70,692 rows and 22 variables, all of which are numeric (dbl). These represent clinical and lifestyle indicators for diabetes prediction.”
+
+
+```{r load-data, message=FALSE}
+diabetes_data <- readr::read_csv(
+  "diabetes_binary_5050split_health_indicators_BRFSS2015.csv",
+  show_col_types = FALSE)
+```
+
+## 1.3: Understand the Structure of the Dataset
+
+I use **glimpse()** to quickly inspect the dataset’s structure, including the **number of observations, variable names, and their data types**. This ensures each column is correctly recognized (e.g., **numeric, categorical**) before continuing with data cleaning and analysis. 
+
+```{r, message=FALSE}
+glimpse(diabetes_data)
+```
+
+## 1.4: Summary Statistics
+
+I use **summary()** to obtain a quick overview of each variable’s **central tendency, spread, and potential anomalies** such as outliers or unexpected values. This step is crucial for understanding data distribution patterns and detecting any irregularities before deeper analysis.
+
+```{r stats, message=FALSE}
+summary(diabetes_data)
+```
+
+## Step 2: Data Cleaning & Preprocessing
+
+Before any analysis can begin, the raw data must be prepared. This step is about ensuring the data is clean, consistent, and ready for modeling. I started by loading the dataset and performing initial checks to understand its structure. I then cleaned and transformed the variables, such as converting them into appropriate data types and renaming them for clarity. For example, some binary variables were converted to factors to ensure they were correctly interpreted by the modeling functions. This meticulous cleaning process prevents errors and ensures the reliability of all subsequent analyses.
+
+## 2.1: Check for Missing Values
+
+Before proceeding with any modeling or visualization, **I checked the dataset for missing values using the colSums(is.na()) function.**
+Missing data can introduce bias, affect statistical inference, or lead to model errors if not properly handled.
+The check confirmed that there are **no missing values **in any of the 21 variables.
+
+```{r miss,message=FALSE, results='hide'}
+colSums(is.na(diabetes_data))
+```
+
+### 2.2: Remove Duplicates
+
+As a data analyst, I **remove any duplicate rows** to ensure the integrity of the dataset. Duplicate records can distort summary statistics and model performance. Although unlikely in survey data, it's a precaution worth taking in any real-world dataset.
+
+```{r}
+# Remove duplicate rows if any exist
+diabetes_data <- diabetes_data[!duplicated(diabetes_data), ]
+```
+
+
+### 2.3: Convert Target Variable to Factor
+
+I convert the **target variable Diabetes_binary** into a factor to reflect its categorical nature (0 = No Diabetes, 1 = Diabetes). This prepares the dataset for classification modeling and helps ensure appropriate behavior in visualization and statistical functions.
+
+
+```{r,message=FALSE}
+# Convert Diabetes_binary to factor (classification target)
+diabetes_data$Diabetes_binary <- as.factor(diabetes_data$Diabetes_binary)
+```
+
+### Step 2.4: Factor Conversion for Binary/Categorical Variables
+####  Why I'm Doing This:
+Many of the variables in this dataset represent binary (0/1) or ordinal data — even though they’re stored as numeric. For better modeling, plotting, and interpretation, I convert such variables to factors where appropriate.
+This is especially important for:
+
+- **Classification models** (e.g., logistic regression, decision trees)
+
+- **Grouped plots** (bar charts, proportions)
+
+- **Avoiding incorrect numeric interpretations*8 (e.g., thinking “Sex = 1” is twice “Sex = 0”)
+
+
+```{r}
+# List of variables to convert to factors (excluding numeric like BMI, MentHlth, etc.)
+factor_vars <- c(
+  "HighBP", "HighChol", "CholCheck", "Smoker", "Stroke",
+  "HeartDiseaseorAttack", "PhysActivity", "Fruits", "Veggies",
+  "HvyAlcoholConsump", "AnyHealthcare", "NoDocbcCost",
+  "DiffWalk", "Sex", "GenHlth", "Age", "Education", "Income"
+)
+
+# Convert them to factors
+diabetes_data[factor_vars] <- lapply(diabetes_data[factor_vars], as.factor)
+
+# Confirm structure
+glimpse(diabetes_data)
+
+```
+
+**Notes**:
+- **GenHlth, Age, Education, and Income** are ordinal categorical variables, so even though they have more than 2 values, I still treat them as factors.
+
+- **I leave BMI, MentHlth, and PhysHlth as numeric** — because they are continuous or count-based and more meaningful as such.
+
+## Step 3: Exploratory Data Analysis (EDA)
+
+EDA is the critical phase where I get to know the data. It's like a detective investigating a crime scene to uncover clues. I began by analyzing the distribution of the target variable, **Diabetes_binary**, and found that the dataset is perfectly balanced (50/50 split). This is an ideal scenario for a classification problem, as it means the models won't be biased towards one class. I then used visualizations like **histograms, bar charts, and boxplots*8 to explore the relationships between different health indicators and diabetes. For instance, boxplots showed a clear trend: people with diabetes tend to have a higher BMI and report more days with poor physical health. A correlation matrix was used to check for multicollinearity, which is important for understanding potential model instabilities. This deep dive into the data provided the foundational insights needed to select and build effective models.
+
+
+#### Why This Step Matters:
+
+Exploratory Data Analysis (EDA) helps me uncover the structure, patterns, and relationships within the dataset. Instead of diving straight into modeling, EDA allows me to spot outliers, detect anomalies, and understand variable behavior—ensuring smarter and more informed decisions in the next steps.
+
+### 3.1: Distribution of the Target Variable (Diabetes)
+
+**Purpose**:
+To verify class balance (especially since this is a 50-50 split dataset). Ensures models are not biased toward one class.
+
+```{r,message=FALSE,warning=FALSE}
+
+# Frequency and proportion of diabetes vs non-diabetes
+table(diabetes_data$Diabetes_binary)
+prop.table(table(diabetes_data$Diabetes_binary))
+
+# Bar plot
+ggplot(diabetes_data, aes(x = Diabetes_binary)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Distribution of Diabetes Cases", x = "Diabetes (0 = No, 1 = Yes)", y = "Count")
+
+```
+
+
+### 3.2: Univariate Analysis (Single Variable Distributions)
+
+#### a) Continuous Variables (BMI, MentHlth, PhysHlth)
+
+**Purpose**:
+To explore the shape of distributions for numeric variables. This helps me identify **skewness, outliers, and possible data quality issues** that may affect model performance or require transformation.
+- This version improves clarity, avoids vague terms like "data issues," and gives a slightly more analytical tone — still easy to understand.
+
+```{r,message=FALSE,warning=FALSE}
+# Histograms of continuous variables
+
+diabetes_data %>%
+  select(BMI, MentHlth, PhysHlth) %>%
+  gather(key = "variable", value = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  facet_wrap(~variable, scales = "free") +
+  labs(title = "Distribution of Continuous Variables")
+```
+
+### b) Categorical Variables (Bar Charts)
+
+- I first extract the factor variables and remove the target. I then create bar charts for each of these categorical features to visualize how responses are spread across the dataset.
+By doing this, I aim to identify whether some categories dominate (e.g., most people are insured, or most people eat fruits daily). This gives me a sense of class balance or skew, which is important for preprocessing and model training. For example, if a variable like stroke etc, has 90% of values in one category, it may not provide much predictive power or might need balancing techniques.
+
+
+
+```{r,message=FALSE,warning=FALSE}
+
+# Step 1: Identify categorical variables
+factor_vars <- names(Filter(is.factor, diabetes_data))
+factor_vars <- setdiff(factor_vars, "Diabetes_binary")  # exclude target
+
+# Step 2: Plot bar charts for the first 9 categorical variables
+library(gridExtra)
+plots <- lapply(factor_vars[1:9], function(var) {
+  ggplot(diabetes_data, aes_string(x = var)) +
+    geom_bar(fill = "lightgreen") +
+    labs(title = var, x = NULL, y = "Count") +
+    theme_minimal()
+})
+do.call(grid.arrange, c(plots, ncol = 3))
+```
+```{r}
+# Step 3: Plot bar charts for the last 9 categorical variables
+library(gridExtra)
+plots <- lapply(factor_vars[10:18], function(var) {
+  ggplot(diabetes_data, aes_string(x = var)) +
+    geom_bar(fill = "lightgreen") +
+    labs(title = var, x = NULL, y = "Count") +
+    theme_minimal()
+})
+do.call(grid.arrange, c(plots, ncol = 3))
+```
+
+#### observations of 3.2(b):
+
+To assess the difference between two levels of binary categorical variables like **Stroke, CholCheck, Veggies, AnyHealthcare, and HvyAlcoholConsump**, I used bar plots and proportion tables. The visualizations showed significant imbalance—for example, only ~8% had a stroke and ~5% reported heavy alcohol use. This imbalance was clearly visible through noticeably taller bars for one category. **Such differences can affect model performance and may require handling before modeling.**
+
+### Step 4: Bivariate Analysis with Target Variable
+#### a) Categorical vs Target (Bar Charts / Proportions)
+####  Smoking vs Diabetes 
+```{r,message=FALSE,warning=FALSE}
+
+# Example: Smoking vs Diabetes
+ggplot(diabetes_data, aes(x = Smoker, fill = Diabetes_binary)) +
+  geom_bar(position = "fill") +
+  labs(title = "Smoking Status by Diabetes", y = "Proportion", x = "Smoker") +
+  scale_fill_manual(values = c("lightblue", "orange"))
+```
+
+#### High Blood Pressure vs Diabetes
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(diabetes_data, aes(x = HighBP, fill = Diabetes_binary)) +
+  geom_bar(position = "fill") +
+  labs(title = "High Blood Pressure by Diabetes", y = "Proportion", x = "HighBP") +
+  scale_fill_manual(values = c("lightblue", "orange"))
+```
+
+#### Heart Disease vs Diabetes
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(diabetes_data, aes(x = HeartDiseaseorAttack, fill = Diabetes_binary)) +
+  geom_bar(position = "fill") +
+  labs(title = "Heart Disease by Diabetes", y = "Proportion", x = "Heart Disease") +
+  scale_fill_manual(values = c("lightblue", "orange"))
+```
+
+####  Physical Activity vs Diabetes
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(diabetes_data, aes(x = PhysActivity, fill = Diabetes_binary)) +
+  geom_bar(position = "fill") +
+  labs(title = "Physical Activity by Diabetes", y = "Proportion", x = "PhysActivity") +
+  scale_fill_manual(values = c("lightblue", "orange"))
+
+```
+
+### 📊 Bivariate Analysis Summary
+
+In this step, I explored the relationship between four binary variables (**HighBP**, **HeartDisease**, **Smoker**, and **PhysActivity**) and Diabetes_binary using proportional bar plots. The visualizations suggested that **HighBP**, **HeartDisease**, and **Smoker** have a positive association with diabetes, indicating higher prevalence among affected individuals. In contrast, **PhysActivity** appears to show a negative association, as physically active individuals seem less likely to have diabetes.
+
+However, I understand that **visual inspection alone is not sufficient** to confirm associations. Therefore, I performed the **Chi-square test** to statistically validate these observed relationships.
+
+### Chi-square tests
+
+```{r,message=FALSE,results='hide'}
+# Chi-square tests for association with Diabetes_binary
+chisq_test_results <- list(
+  HighBP = chisq.test(table(diabetes_data$HighBP, diabetes_data$Diabetes_binary)),
+  HeartDisease = chisq.test(table(diabetes_data$HeartDiseaseorAttack, diabetes_data$Diabetes_binary)),
+  Smoker = chisq.test(table(diabetes_data$Smoker, diabetes_data$Diabetes_binary)),
+  PhysActivity = chisq.test(table(diabetes_data$PhysActivity, diabetes_data$Diabetes_binary)),
+  HighChol = chisq.test(table(diabetes_data$ HighChol, diabetes_data$Diabetes_binary)),
+CholCheck   = chisq.test(table(diabetes_data$CholCheck, diabetes_data$Diabetes_binary)),
+  Stroke  = chisq.test(table(diabetes_data$Stroke , diabetes_data$Diabetes_binary)),
+  Fruits = chisq.test(table(diabetes_data$Fruits, diabetes_data$Diabetes_binary)),
+  Veggies = chisq.test(table(diabetes_data$Veggies, diabetes_data$Diabetes_binary)),
+  Smoker = chisq.test(table(diabetes_data$Smoker, diabetes_data$Diabetes_binary)),
+HvyAlcoholConsump = chisq.test(table(diabetes_data$HvyAlcoholConsump, diabetes_data$Diabetes_binary)),
+AnyHealthcare = chisq.test(table(diabetes_data$AnyHealthcare, diabetes_data$Diabetes_binary)),
+NoDocbcCost  = chisq.test(table(diabetes_data$NoDocbcCost , diabetes_data$Diabetes_binary)),
+GenHlth = chisq.test(table(diabetes_data$GenHlth, diabetes_data$Diabetes_binary)),
+DiffWalk = chisq.test(table(diabetes_data$DiffWalk, diabetes_data$Diabetes_binary)),
+Sex  = chisq.test(table(diabetes_data$Sex, diabetes_data$Diabetes_binary)),
+Age  = chisq.test(table(diabetes_data$Age , diabetes_data$Diabetes_binary)),
+Education  = chisq.test(table(diabetes_data$Education, diabetes_data$Diabetes_binary)),
+Income  = chisq.test(table(diabetes_data$Income , diabetes_data$Diabetes_binary)))
+
+# Print results
+chisq_test_results
+
+```
+
+```{r}
+sapply(chisq_test_results, function(x) x$p.value)
+```
+### Chi-square Test Summary
+
+## 🔍 **Chi-square Test Summary**
+
+**Chi-square tests** confirmed that **all listed variables** are significantly associated with `Diabetes_binary` status (**p < 0.001**).  
+Most **health-risk variables** showed a **positive association**, while **protective behaviors** — such as **physical activity**, **fruit/vegetable intake**, **higher income**, and **higher education** — showed a **negative association**.
+
+### b) Continuous vs Target (Boxplots)
+
+
+```{r}
+# Boxplots
+diabetes_data %>%
+  select(Diabetes_binary, BMI, MentHlth, PhysHlth) %>%
+  gather(key = "Variable", value = "Value", -Diabetes_binary) %>%
+  ggplot(aes(x = Diabetes_binary, y = Value, fill = Diabetes_binary)) +
+  geom_boxplot() +
+  facet_wrap(~Variable, scales = "free") +
+  labs(title = "Distribution of Continuous Variables by Diabetes Status")
+```
+### TakeAways
+The boxplots show that individuals with **diabetes** tend to have a **higher BMI** and experience **more days of poor physical and mental health** compared to those without diabetes. The difference in physical health days is especially large, suggesting a **stronger impact of diabetes on physical well-being.** These patterns highlight the association between diabetes and overall poorer health indicators. Effective lifestyle management may help reduce these risks.
+
+### C) Outlier Detection
+
+```{r}
+# Select and reshape the 3 variables into long format
+long_data <- diabetes_data %>%
+  select(BMI, MentHlth, PhysHlth) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Value")
+
+# Create boxplots for all three variables
+ggplot(long_data, aes(x = Variable, y = Value)) +
+  geom_boxplot(fill = "pink") +
+  labs(title = "Outlier Detection: BMI, MentHlth & PhysHlth",
+       x = "Variable",
+       y = "Value")
+```
+
+#### conclusion of Outlier Detection
+
+The graph is a boxplot showing outlier detection for **BMI, MentHlth, and PhysHlth variables**. **BMI has the widest range with several outliers above 75, while MentHlth and PhysHlth have fewer outliers, mostly below 25**. The interquartile range (IQR) for BMI is broader compared to MentHlth and PhysHlth. The plot was created using R code with ggplot2, transforming the data into a long format.
+
+
+
+
+### Step 5: (A) Correlation Analysis (For Numeric Variables)
+
+To detect multicollinearity between numeric variables (e.g., MentHlth and PhysHlth), which may impact regression models later.
+
+
+```{r,message=FALSE,warning=FALSE}
+# Correlation between numeric variables
+num_vars <- diabetes_data %>%
+  select_if(is.numeric)
+
+cor_matrix <- round(cor(num_vars), 2)
+corrplot::corrplot(cor_matrix, method = "color", tl.cex = 0.8)
+```
+
+- The above graph  is a correlation matrix heatmap showing relationships between numeric variables **(BMI, MentHlth, PhysHlth)** from a diabetes dataset. The color intensity indicates the strength of correlation, with **darker shades representing higher correlation (up to 1)** and**lighter shades lower or no correlation (down to -1)**. BMI shows a moderate positive correlation with MentHlth and PhysHlth, while MentHlth and PhysHlth have a stronger positive correlation with each other. The code used (in R) generates this plot using the corrplot package.
+
+### (B) Correlation Analysis
+
+To evaluate the relationships among key continuous health indicators, I computed a Pearson correlation matrix for `BMI`, `MentalHealth` (MentHlth), and `PhysicalHealth` (PhysHlth). These variables were selected based on their relevance to overall health perception and chronic disease risk.
+
+The correlation heatmap provides a quick visual inspection of the strength and direction of linear associations among these variables.
+
+
+
+```{r}
+# Step 5: Correlation Analysis (BMI, MentalHealth, PhysicalHealth)
+
+# 1. Select the numeric variables of interest
+num_vars <- diabetes_data %>%
+  select(MentHlth, PhysHlth, BMI)
+
+# 2. Compute the correlation matrix
+cor_matrix <- cor(num_vars, use = "complete.obs")
+
+# 3. Visualize the correlation matrix
+library("corrplot")
+corrplot(cor_matrix,
+         method = "color",        # Use colored squares
+         type = "upper",          # Show only upper triangle
+         tl.col = "black",        # Text label color
+         tl.cex = 0.8,            # Text size
+         number.cex = 0.7,        # Correlation number size
+         addCoef.col = "black")   # Add correlation values
+
+```
+
+#### 🔍 Key Takeaways:
+- **MentalHealth** and **PhysHlth** show a moderate positive correlation (0.38), suggesting a potential link between physical and mental well-being.
+- **BMI** has a weak correlation with both health-related variables (0.10 with MentHlth, 0.16 with PhysHlth), indicating it may capture a different aspect of health.
+- No strong multicollinearity is present among the variables, making them suitable for inclusion in modeling stages.
+The heatmap,visually represents these correlations, with darker shades indicating stronger relationships.
+
+
+### Step 6: Feature Engineering 
+
+ I will cover:
+
+- Convert ordinal variables (GenHlth, Age, Education, Income) into ordered factors
+
+- Create BMI_category based on WHO guidelines
+
+### 6.1: Convert Ordinal Categorical Variables to Ordered Factors
+
+```{r}
+# Convert ordinal variables to ordered factors with meaningful order
+
+diabetes_data$GenHlth <- factor(diabetes_data$GenHlth,
+                                levels = c("1", "2", "3", "4", "5"),
+                                labels = c("Excellent", "Very Good", "Good", "Fair", "Poor"),
+                                ordered = TRUE)
+
+diabetes_data$Age <- factor(diabetes_data$Age,
+                            levels = as.character(1:13),  # 1 = youngest, 13 = oldest
+                            ordered = TRUE)
+
+diabetes_data$Education <- factor(diabetes_data$Education,
+                                  levels = as.character(1:6),  # 1 = No School, 6 = College Graduate
+                                  labels = c("No School", "Grades 1–8", "Grades 9–11",
+                                             "High School Grad", "Some College", "College Grad"),
+                                  ordered = TRUE)
+
+diabetes_data$Income <- factor(diabetes_data$Income,
+                               levels = as.character(1:8),  # 1 = lowest income
+                               labels = c("<$10k", "$10–15k", "$15–20k", "$20–25k",
+                                          "$25–35k", "$35–50k", "$50–75k", ">$75k"),
+                               ordered = TRUE)
+```
+
+### 6.2: Create BMI Categories
+
+```{r}
+# Categorize BMI based on WHO cutoffs
+diabetes_data$BMI_category <- cut(diabetes_data$BMI,
+                                  breaks = c(-Inf, 18.5, 24.9, 29.9, Inf),
+                                  labels = c("Underweight", "Normal", "Overweight", "Obese"),
+                                  right = TRUE)
+```
+
+###  Key Takeaways from Step 6: Feature Engineering
+
+- **Ordinal variables** like `genhlth`, `age`, `education`, and `income` were converted into **ordered factors** to maintain their natural ranking (e.g., *Poor < Fair < Good*).
+- Using `levels` and `labels`, raw numeric codes were translated into **meaningful categories** for clearer analysis and visualization.
+- `ordered = TRUE` ensures that statistical models or visualizations **respect the order** of categories.
+- Variables such as `age`, `education`, and `income` are treated as **ranked variables**, which improves interpretation in grouped summaries or regression models.
+- **BMI was categorized** using WHO standards into groups like *Underweight*, *Normal*, *Overweight*, and *Obese* using the `cut()` function for easier comparison in visualizations and analysis.
+
+### Step 7: Data Splitting and Model Building
+
+In my project conducted in R Studio, I have reached Step 7: Data Splitting and Model Building, a key phase for developing a predictive model for the binary outcome variable Diabetes_binary. This step involves dividing the dataset into training and testing sets, building a logistic regression model, making predictions, and evaluating the model's performance. This process helps me establish a baseline predictive capability to guide further enhancements.
+
+#### Step 7.1: Data Splitting
+
+I split the dataset into 70% training and 30% testing sets using the **caret** package, ensuring reproducibility with a set seed of 123.
+
+```{r,message=FALSE,warning=FALSE}
+# Set seed for reproducibility
+set.seed(123)
+
+# Load caret for data splitting
+library(caret)
+
+# Split data: 70% training, 30% testing
+splitIndex <- createDataPartition(diabetes_data$Diabetes_binary, p = 0.7, list = FALSE)
+train_data <- diabetes_data[splitIndex, ]
+test_data <- diabetes_data[-splitIndex, ]
+
+```
+
+#### Step 7.2: Model Building
+
+I trained a logistic regression model on the training data using all available features. The summary highlights significant predictors like HighBP, HighChol, BMI, and GenHlth, with some variables like Smoker1 and Fruits1 showing less significance.
+
+```{r,message=FALSE,warning=FALSE,results='hide'}
+# Logistic Regression Model
+model_log <- glm(Diabetes_binary ~ ., data = train_data, family = "binomial")
+
+# Summary
+summary(model_log)
+
+```
+
+#### Step 7.3: Make Predictions
+
+I generated predictions on the test set, converting probabilities to binary classes using a 0.5 threshold.
+
+```{r,message=FALSE,warning=FALSE}
+# Predict probabilities
+pred_probs <- predict(model_log, newdata = test_data, type = "response")
+
+# Convert to class (0/1) using 0.5 threshold
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+
+```
+
+#### Step 7.4: Evaluate Model Performance
+
+
+```{r,message=FALSE,warning=FALSE,results='hide'}
+# Confusion Matrix
+confusionMatrix(factor(pred_class), factor(test_data$Diabetes_binary))
+
+# ROC and AUC (Optional)
+library(pROC)
+roc_obj <- roc(test_data$Diabetes_binary, pred_probs)
+auc(roc_obj)
+plot(roc_obj, col = "blue")
+
+```
+
+#### Key Results:
+
+- **Accuracy**: 74.96%
+- **Sensitivity (Recall for Class 0)**: 71.85%
+- **Specificity (Recall for Class 1)**: 77.98%
+- **AUC**: 0.824
+
+#### takeaways
+
+This step successfully established my baseline logistic regression model with an accuracy of 74.96% and an AUC of 0.824, demonstrating its ability to predict diabetes risk. The significant predictors identified will guide my further model refinement, while the moderate performance suggests potential for improvement in upcoming steps.
+
+
+### Step 8: Model Evaluation
+
+The final step is to determine which of the three models performs best. I used a confusion matrix to evaluate each model based on key metrics for classification: accuracy, sensitivity, and specificity.
+
+- Accuracy tells us the overall proportion of correct predictions.
+
+- Sensitivity measures the model's ability to correctly identify patients who do have diabetes (true positives).
+
+- Specificity measures its ability to correctly identify patients who do not have diabetes (true negatives)
+
+#### Introduction
+In my project conducted in R Studio, I have progressed to Step 8: Model Evaluation, a vital phase following the training of my predictive model for the target variable Diabetes_binary. This step focuses on evaluating how well my random forest model performs in predicting Diabetes_binary using key metrics such as accuracy, confusion matrix, precision, and recall. By analyzing these metrics, I aim to gauge the reliability and effectiveness of my model in classifying diabetes risk, building on the groundwork laid in previous steps.
+
+- I loaded the caret library to support the evaluation of my Diabetes_binary prediction model.
+- I created a confusion matrix to assess the performance of my random forest model on the test data for Diabetes_binary.
+- I printed the results, which provided detailed performance metrics specific to diabetes risk classification.
+
+
+
+```{r,message=FALSE,warning=FALSE,results='hide',echo=FALSE}
+# Step 8: Model Training and Evaluation
+
+# what I do: Load required libraries
+# why I do: These are essential for modeling and evaluation
+library(caret)
+library(rpart)
+library(randomForest)
+library(pROC)
+library(e1071)
+
+# what I do: Set seed
+# why I do: For reproducibility of model results
+set.seed(123)
+
+# what I do: Train logistic regression model
+# why I do: It's a baseline model for binary classification
+log_model <- glm(Diabetes_binary ~ ., data = train_data, family = binomial)
+
+# what I do: Predict on test set
+# why I do: To evaluate model performance
+log_pred <- predict(log_model, newdata = test_data, type = "response")
+log_class <- ifelse(log_pred > 0.5, 1, 0)
+
+# what I do: Evaluate logistic model
+# why I do: To understand performance metrics
+confusionMatrix(as.factor(log_class), as.factor(test_data$Diabetes_binary))
+
+# what I do: Train decision tree model
+# why I do: To capture nonlinear patterns
+tree_model <- rpart(Diabetes_binary ~ ., data = train_data, method = "class")
+
+# what I do: Predict and evaluate tree model
+tree_pred <- predict(tree_model, newdata = test_data, type = "class")
+confusionMatrix(tree_pred, as.factor(test_data$Diabetes_binary))
+
+# what I do: Train random forest model
+# why I do: It’s robust and handles feature interactions well
+rf_model <- randomForest(Diabetes_binary ~ ., data = train_data, ntree = 100)
+
+# what I do: Predict and evaluate random forest model
+rf_pred <- predict(rf_model, newdata = test_data)
+confusionMatrix(rf_pred, as.factor(test_data$Diabetes_binary))
+
+# what I do: Plot ROC curve for random forest
+# why I do: To visualize classifier’s ability to separate classes
+rf_prob <- predict(rf_model, newdata = test_data, type = "prob")[,2]
+roc_rf <- roc(test_data$Diabetes_binary, rf_prob)
+plot(roc_rf, main = "ROC Curve - Random Forest")
+auc(roc_rf)
+
+```
+
+
+
+
+
+
+
+
+
+```{r,message=FALSE,warning=FALSE}
+# Step 8: Model Evaluation
+# In this step, I evaluate how well my model performed using metrics like accuracy,
+# confusion matrix, precision, and recall. This helps assess how reliable the model is.
+
+# Load library
+library(caret)
+# Generate predictions from trained model
+rf_pred <- predict(rf_model, test_data)
+rf_pred <- as.factor(rf_pred)  # ensure factor format
+
+# Also make sure your test label is factor
+test_data$Diabetes_binary <- as.factor(test_data$Diabetes_binary)
+# Create confusion matrix
+conf_matrix <- confusionMatrix(rf_pred, test_data$Diabetes_binary)
+
+# Print results
+conf_matrix
+```
+
+#### Takeaway
+- This step demonstrated that my random forest model achieved an accuracy of 0.741 in **predicting Diabetes_binary**, with a sensitivity of 0.7144 (ability to identify true diabetes cases) and specificity of 0.7668 (ability to identify true non-diabetes cases). The confusion matrix and metrics like Kappa (0.4816) and balanced accuracy (0.7406) indicate a reliable model for diabetes risk prediction, though there is potential for enhancement, which I will explore in the next steps.
+
+
+# Conclusion
+
+This analysis successfully identified **key health and lifestyle factors influencing diabetes risk**, such as **high blood pressure, cholesterol levels, BMI, physical activity, and general health status**.  
+The logistic regression model achieved an **accuracy of ~75%** and an **AUC of 0.824**, showing strong predictive capability for a baseline model without advanced tuning.  
+
+**Key achievements from this project:**  
+- Applied systematic **data cleaning and preprocessing** to prepare a large public health dataset.  
+- Conducted **comprehensive EDA**, revealing meaningful relationships between binary health indicators and diabetes.  
+- Built and evaluated a **predictive classification model**, validating results with statistical metrics.  
+- Translated findings into **clear, data-driven insights** that can aid public health awareness and preventive care strategies.  
+
+This portfolio project not only highlights my technical skills in **R, data visualization, and statistical modeling**, but also reflects my analytical approach and attention to data quality—essential qualities for impactful data analysis in healthcare contexts.  
+
+
